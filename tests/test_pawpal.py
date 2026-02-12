@@ -1,11 +1,12 @@
 """
 Tests for PawPal+ System
 
-This module contains unit tests for the core PawPal+ functionality.
+This module contains unit tests for the core PawPal+ functionality,
+including basic operations, scheduling, and advanced algorithmic features.
 """
 
 import pytest
-from pawpal_system import Owner, Pet, Task, Scheduler
+from pawpal_system import Owner, Pet, Task, Scheduler, ScheduledTask
 from datetime import time
 
 
@@ -269,3 +270,412 @@ class TestScheduler:
         scheduler = Scheduler(owner)
         
         assert scheduler.is_schedule_feasible() == False
+
+
+class TestSorting:
+    """Test cases for task sorting algorithms."""
+    
+    def test_sort_by_priority_high_first(self):
+        """Verify that tasks are sorted with high priority first."""
+        owner = Owner("Test", time(8, 0), time(18, 0))
+        pet = Pet("Max", "Dog", 3)
+        
+        # Add tasks in random priority order
+        pet.add_task(Task("Low task", "Low priority", 10, "low", "daily"))
+        pet.add_task(Task("High task", "High priority", 20, "high", "daily"))
+        pet.add_task(Task("Medium task", "Medium priority", 15, "medium", "daily"))
+        
+        scheduler = Scheduler(owner)
+        sorted_tasks = scheduler.sort_tasks_by_priority(pet.get_daily_tasks())
+        
+        assert sorted_tasks[0].priority == "high"
+        assert sorted_tasks[1].priority == "medium"
+        assert sorted_tasks[2].priority == "low"
+
+    def test_sort_by_duration_ascending(self):
+        """Verify that tasks are sorted by duration (shortest first)."""
+        owner = Owner("Test", time(8, 0), time(18, 0))
+        pet = Pet("Max", "Dog", 3)
+        
+        # Add tasks with different durations
+        pet.add_task(Task("Task A", "30 min", 30, "medium", "daily"))
+        pet.add_task(Task("Task B", "10 min", 10, "medium", "daily"))
+        pet.add_task(Task("Task C", "20 min", 20, "medium", "daily"))
+        
+        scheduler = Scheduler(owner)
+        sorted_tasks = scheduler.sort_tasks_by_duration(pet.get_daily_tasks(), ascending=True)
+        
+        assert sorted_tasks[0].duration_minutes == 10
+        assert sorted_tasks[1].duration_minutes == 20
+        assert sorted_tasks[2].duration_minutes == 30
+
+    def test_sort_by_duration_descending(self):
+        """Verify that tasks can be sorted by duration (longest first)."""
+        owner = Owner("Test", time(8, 0), time(18, 0))
+        pet = Pet("Max", "Dog", 3)
+        
+        pet.add_task(Task("Task A", "30 min", 30, "medium", "daily"))
+        pet.add_task(Task("Task B", "10 min", 10, "medium", "daily"))
+        pet.add_task(Task("Task C", "20 min", 20, "medium", "daily"))
+        
+        scheduler = Scheduler(owner)
+        sorted_tasks = scheduler.sort_tasks_by_duration(pet.get_daily_tasks(), ascending=False)
+        
+        assert sorted_tasks[0].duration_minutes == 30
+        assert sorted_tasks[1].duration_minutes == 20
+        assert sorted_tasks[2].duration_minutes == 10
+
+
+class TestFiltering:
+    """Test cases for task filtering algorithms."""
+    
+    def test_filter_by_priority(self):
+        """Verify that filtering by priority returns only matching tasks."""
+        owner = Owner("Test", time(8, 0), time(18, 0))
+        pet = Pet("Max", "Dog", 3)
+        
+        pet.add_task(Task("Task 1", "High", 10, "high", "daily"))
+        pet.add_task(Task("Task 2", "Low", 10, "low", "daily"))
+        pet.add_task(Task("Task 3", "High", 10, "high", "daily"))
+        pet.add_task(Task("Task 4", "Medium", 10, "medium", "daily"))
+        
+        scheduler = Scheduler(owner)
+        all_tasks = pet.get_daily_tasks()
+        high_priority = scheduler.filter_tasks_by_priority(all_tasks, "high")
+        
+        assert len(high_priority) == 2
+        assert all(task.priority == "high" for task in high_priority)
+
+    def test_filter_by_status_completed(self):
+        """Verify that filtering by completion status works correctly."""
+        owner = Owner("Test", time(8, 0), time(18, 0))
+        pet = Pet("Max", "Dog", 3)
+        
+        task1 = Task("Done", "Completed", 10, "high", "daily")
+        task2 = Task("Pending", "Not done", 10, "high", "daily")
+        task3 = Task("Also done", "Completed", 10, "high", "daily")
+        
+        task1.mark_complete()
+        task3.mark_complete()
+        
+        pet.add_task(task1)
+        pet.add_task(task2)
+        pet.add_task(task3)
+        
+        scheduler = Scheduler(owner)
+        all_tasks = pet.get_daily_tasks()
+        completed = scheduler.filter_tasks_by_status(all_tasks, completed=True)
+        
+        assert len(completed) == 2
+        assert all(task.is_completed for task in completed)
+
+    def test_filter_by_status_incomplete(self):
+        """Verify that filtering for incomplete tasks works."""
+        owner = Owner("Test", time(8, 0), time(18, 0))
+        pet = Pet("Max", "Dog", 3)
+        
+        task1 = Task("Done", "Completed", 10, "high", "daily")
+        task2 = Task("Pending", "Not done", 10, "high", "daily")
+        task3 = Task("Also pending", "Not done", 10, "high", "daily")
+        
+        task1.mark_complete()
+        
+        pet.add_task(task1)
+        pet.add_task(task2)
+        pet.add_task(task3)
+        
+        scheduler = Scheduler(owner)
+        all_tasks = pet.get_daily_tasks()
+        incomplete = scheduler.filter_tasks_by_status(all_tasks, completed=False)
+        
+        assert len(incomplete) == 2
+        assert all(not task.is_completed for task in incomplete)
+
+    def test_search_tasks_by_name(self):
+        """Verify that task search by name works correctly."""
+        pet = Pet("Max", "Dog", 3)
+        
+        pet.add_task(Task("Morning walk", "Outdoor walk", 30, "high", "daily"))
+        pet.add_task(Task("Evening walk", "Park time", 30, "high", "daily"))
+        pet.add_task(Task("Feeding", "Dry kibble", 10, "high", "daily"))
+        
+        results = pet.search_tasks("walk")
+        
+        assert len(results) == 2
+        assert all("walk" in task.name.lower() for task in results)
+
+    def test_search_tasks_by_description(self):
+        """Verify that task search by description works correctly."""
+        pet = Pet("Max", "Dog", 3)
+        
+        pet.add_task(Task("Task 1", "Exercise activity", 30, "high", "daily"))
+        pet.add_task(Task("Task 2", "Feeding activity", 10, "high", "daily"))
+        pet.add_task(Task("Task 3", "Play activity", 20, "high", "daily"))
+        
+        results = pet.search_tasks("activity")
+        
+        assert len(results) == 3
+
+    def test_search_tasks_case_insensitive(self):
+        """Verify that task search is case-insensitive."""
+        pet = Pet("Max", "Dog", 3)
+        
+        pet.add_task(Task("Morning Walk", "Outdoor time", 30, "high", "daily"))
+        pet.add_task(Task("Feeding", "Dry kibble", 10, "high", "daily"))
+        
+        results_lower = pet.search_tasks("walk")
+        results_upper = pet.search_tasks("WALK")
+        results_mixed = pet.search_tasks("WaLk")
+        
+        assert len(results_lower) == len(results_upper) == len(results_mixed) == 1
+
+
+class TestRecurringTasks:
+    """Test cases for recurring task automation."""
+    
+    def test_mark_daily_task_creates_next_occurrence(self):
+        """Verify that completing a daily task creates a new instance."""
+        task = Task("Daily Feed", "Morning feeding", 10, "high", "daily")
+        
+        next_task = task.mark_complete()
+        
+        assert task.is_completed == True
+        assert next_task is not None
+        assert next_task.name == task.name
+        assert next_task.is_completed == False
+        assert next_task.frequency == "daily"
+
+    def test_mark_weekly_task_creates_next_occurrence(self):
+        """Verify that completing a weekly task creates a new instance."""
+        task = Task("Weekly Bath", "Full bath", 45, "medium", "weekly")
+        
+        next_task = task.mark_complete()
+        
+        assert task.is_completed == True
+        assert next_task is not None
+        assert next_task.name == task.name
+        assert next_task.frequency == "weekly"
+
+    def test_non_recurring_task_returns_none(self):
+        """Verify that non-recurring tasks return None when completed."""
+        task = Task("One-time task", "Special task", 20, "high", "once")
+        
+        next_task = task.mark_complete()
+        
+        assert task.is_completed == True
+        assert next_task is None
+
+    def test_recurring_task_preserves_properties(self):
+        """Verify that new recurring task instances preserve original properties."""
+        original = Task(
+            "Walk", 
+            "Morning walk in park", 
+            30, 
+            priority="high", 
+            frequency="daily"
+        )
+        
+        next_task = original.mark_complete()
+        
+        assert next_task.name == original.name
+        assert next_task.duration_minutes == original.duration_minutes
+        assert next_task.priority == original.priority
+        assert next_task.frequency == original.frequency
+        assert next_task.description == original.description
+
+    def test_adding_recurring_task_to_pet(self):
+        """Verify that recurring task can be added to pet after completion."""
+        pet = Pet("Max", "Dog", 3)
+        task = Task("Feed Max", "Daily feeding", 10, "high", "daily")
+        
+        pet.add_task(task)
+        assert len(pet.tasks) == 1
+        
+        next_task = task.mark_complete()
+        pet.add_task(next_task)
+        
+        assert len(pet.tasks) == 2
+        assert pet.tasks[0].is_completed == True
+        assert pet.tasks[1].is_completed == False
+
+
+class TestConflictDetection:
+    """Test cases for task conflict detection."""
+    
+    def test_no_conflicts_in_sequential_schedule(self):
+        """Verify that sequential tasks have no conflicts."""
+        owner = Owner("Test", time(8, 0), time(18, 0))
+        pet = Pet("Max", "Dog", 3)
+        
+        pet.add_task(Task("Task 1", "First", 30, "high", "daily"))
+        pet.add_task(Task("Task 2", "Second", 20, "high", "daily"))
+        
+        scheduler = Scheduler(owner)
+        scheduler.generate_schedule()
+        
+        conflicts = scheduler.detect_conflicts()
+        assert len(conflicts) == 0
+
+    def test_detect_overlapping_tasks(self):
+        """Verify that overlapping tasks are detected."""
+        scheduler = Scheduler(Owner("Test", time(8, 0), time(18, 0)))
+        
+        task1 = Task("Task A", "First task", 30, "high", "daily")
+        task2 = Task("Task B", "Second task", 30, "high", "daily")
+        
+        # Manually create overlapping schedule
+        scheduler.schedule = [
+            ScheduledTask(task1, time(9, 0), 30),   # 9:00-9:30
+            ScheduledTask(task2, time(9, 15), 30),  # 9:15-9:45 (overlaps)
+        ]
+        
+        conflicts = scheduler.detect_conflicts()
+        assert len(conflicts) == 1
+
+    def test_detect_exact_time_overlap(self):
+        """Verify that tasks at exact same time are detected."""
+        scheduler = Scheduler(Owner("Test", time(8, 0), time(18, 0)))
+        
+        task1 = Task("Task A", "First", 30, "high", "daily")
+        task2 = Task("Task B", "Second", 30, "high", "daily")
+        
+        # Both start at same time
+        scheduler.schedule = [
+            ScheduledTask(task1, time(10, 0), 30),
+            ScheduledTask(task2, time(10, 0), 30),
+        ]
+        
+        conflicts = scheduler.detect_conflicts()
+        assert len(conflicts) == 1
+
+    def test_adjacent_tasks_no_conflict(self):
+        """Verify that adjacent tasks (back-to-back) don't conflict."""
+        scheduler = Scheduler(Owner("Test", time(8, 0), time(18, 0)))
+        
+        task1 = Task("Task A", "First", 30, "high", "daily")
+        task2 = Task("Task B", "Second", 30, "high", "daily")
+        
+        # Task 1: 9:00-9:30, Task 2: 9:30-10:00 (no overlap)
+        scheduler.schedule = [
+            ScheduledTask(task1, time(9, 0), 30),
+            ScheduledTask(task2, time(9, 30), 30),
+        ]
+        
+        conflicts = scheduler.detect_conflicts()
+        assert len(conflicts) == 0
+
+    def test_conflicts_summary_message(self):
+        """Verify that conflict summary generates readable message."""
+        scheduler = Scheduler(Owner("Test", time(8, 0), time(18, 0)))
+        
+        task1 = Task("Walk", "Outdoor", 30, "high", "daily")
+        task2 = Task("Feed", "Food time", 30, "high", "daily")
+        
+        scheduler.schedule = [
+            ScheduledTask(task1, time(10, 0), 30),
+            ScheduledTask(task2, time(10, 15), 30),
+        ]
+        
+        summary = scheduler.get_conflicts_summary()
+        
+        assert "CONFLICT DETECTED" in summary
+        assert "Walk" in summary
+        assert "Feed" in summary
+
+    def test_no_conflicts_summary_message(self):
+        """Verify that no conflicts returns positive message."""
+        scheduler = Scheduler(Owner("Test", time(8, 0), time(18, 0)))
+        
+        task1 = Task("Task A", "First", 30, "high", "daily")
+        scheduler.schedule = [ScheduledTask(task1, time(10, 0), 30)]
+        
+        summary = scheduler.get_conflicts_summary()
+        
+        assert "No scheduling conflicts" in summary
+
+
+class TestAdvancedQuerying:
+    """Test cases for advanced Owner and Pet querying capabilities."""
+    
+    def test_get_pet_by_name(self):
+        """Verify that pets can be found by name."""
+        owner = Owner("Test")
+        
+        dog = Pet("Max", "Dog", 3)
+        cat = Pet("Whiskers", "Cat", 5)
+        
+        owner.add_pet(dog)
+        owner.add_pet(cat)
+        
+        found = owner.get_pet_by_name("Max")
+        assert found is not None
+        assert found.name == "Max"
+        assert found.species == "Dog"
+
+    def test_get_pet_by_name_case_insensitive(self):
+        """Verify that pet search is case-insensitive."""
+        owner = Owner("Test")
+        owner.add_pet(Pet("Max", "Dog", 3))
+        
+        found_lower = owner.get_pet_by_name("max")
+        found_upper = owner.get_pet_by_name("MAX")
+        found_mixed = owner.get_pet_by_name("MaX")
+        
+        assert found_lower is not None
+        assert found_upper is not None
+        assert found_mixed is not None
+
+    def test_get_pet_by_name_not_found(self):
+        """Verify that searching for non-existent pet returns None."""
+        owner = Owner("Test")
+        owner.add_pet(Pet("Max", "Dog", 3))
+        
+        not_found = owner.get_pet_by_name("Buddy")
+        assert not_found is None
+
+    def test_get_high_priority_tasks_all_pets(self):
+        """Verify that high-priority tasks are aggregated across all pets."""
+        owner = Owner("Test")
+        
+        dog = Pet("Max", "Dog", 3)
+        dog.add_task(Task("Walk", "High task", 30, "high", "daily"))
+        dog.add_task(Task("Play", "Low task", 20, "low", "daily"))
+        
+        cat = Pet("Whiskers", "Cat", 5)
+        cat.add_task(Task("Feed", "High task", 10, "high", "daily"))
+        cat.add_task(Task("Groom", "Medium task", 15, "medium", "daily"))
+        
+        owner.add_pet(dog)
+        owner.add_pet(cat)
+        
+        high_priority = owner.get_all_high_priority_tasks()
+        
+        assert len(high_priority) == 2
+        assert all(task.priority == "high" for task in high_priority)
+
+    def test_get_incomplete_tasks_by_pet(self):
+        """Verify that incomplete tasks are grouped by pet."""
+        owner = Owner("Test")
+        
+        dog = Pet("Max", "Dog", 3)
+        cat = Pet("Whiskers", "Cat", 5)
+        
+        dog_task1 = Task("Walk", "Outdoor", 30, "high", "daily")
+        dog_task2 = Task("Feed", "Food", 10, "high", "daily")
+        dog_task2.mark_complete()
+        
+        cat_task1 = Task("Feed", "Food", 10, "high", "daily")
+        
+        dog.add_task(dog_task1)
+        dog.add_task(dog_task2)
+        cat.add_task(cat_task1)
+        
+        owner.add_pet(dog)
+        owner.add_pet(cat)
+        
+        incomplete = owner.get_incomplete_tasks_by_pet()
+        
+        assert "Max" in incomplete
+        assert "Whiskers" in incomplete
+        assert len(incomplete["Max"]) == 1
+        assert len(incomplete["Whiskers"]) == 1
