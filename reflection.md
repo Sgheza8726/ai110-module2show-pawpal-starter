@@ -54,6 +54,10 @@ The main tradeoff is **greedy scheduling vs. optimization**. My current implemen
 
 An edge case: If there aren't enough hours for all tasks, the scheduler will leave some low-priority tasks unscheduled. In a future version, we could implement "task rejection" with user feedback ("You have too many tasks for today - which would you like to skip?").
 
+**Additional algorithmic tradeoff in Phase 4**: For **conflict detection**, I chose to check all pairs of scheduled tasks O(n²) rather than implementing a more complex interval tree O(n log n). For a typical day with 10-15 tasks, the overhead is negligible, and the simple approach is more readable. For an app managing 100+ tasks, an interval tree would be better.
+
+For **recurring task automation**, I chose to return a new Task instance rather than silently creating it on the owner's behalf. This gives the app more control—it can choose to add the task, show it to the user first, or discard it. This explicit factory pattern is more flexible than automatic creation..
+
 ---
 
 ## 3. AI Collaboration

@@ -9,8 +9,8 @@ This module contains the core classes that make up the PawPal+ system:
 """
 
 from dataclasses import dataclass, field
-from typing import List, Optional
-from datetime import datetime, time
+from typing import List, Optional, Dict
+from datetime import datetime, time, timedelta
 
 
 @dataclass
@@ -25,6 +25,7 @@ class Task:
         priority (str): One of 'high', 'medium', 'low'
         frequency (str): How often (e.g., 'daily', 'twice-daily', 'weekly')
         is_completed (bool): Whether the task has been done today
+        created_date (datetime): When the task was created
     """
     name: str
     description: str
@@ -32,6 +33,7 @@ class Task:
     priority: str = "medium"
     frequency: str = "daily"
     is_completed: bool = False
+    created_date: datetime = field(default_factory=datetime.now)
 
     def is_due_today(self) -> bool:
         """Determine if this task should be done today based on frequency."""
@@ -43,9 +45,40 @@ class Task:
         priority_map = {'high': 3, 'medium': 2, 'low': 1}
         return priority_map.get(self.priority, 2)
 
-    def mark_complete(self) -> None:
-        """Mark this task as completed."""
+    def mark_complete(self) -> Optional['Task']:
+        """
+        Mark this task as completed.
+        
+        For recurring tasks, returns a new Task instance for the next occurrence.
+        For non-recurring tasks, returns None.
+        """
         self.is_completed = True
+        
+        # Auto-generate next recurring task if applicable
+        if self.frequency in ['daily', 'twice-daily', 'three-times-daily']:
+            next_task = Task(
+                name=self.name,
+                description=self.description,
+                duration_minutes=self.duration_minutes,
+                priority=self.priority,
+                frequency=self.frequency,
+                is_completed=False,
+                created_date=datetime.now()
+            )
+            return next_task
+        elif self.frequency == 'weekly':
+            next_task = Task(
+                name=self.name,
+                description=self.description,
+                duration_minutes=self.duration_minutes,
+                priority=self.priority,
+                frequency=self.frequency,
+                is_completed=False,
+                created_date=datetime.now()
+            )
+            return next_task
+        
+        return None
 
     def mark_incomplete(self) -> None:
         """Mark this task as incomplete."""
@@ -85,6 +118,21 @@ class Pet:
     def get_incomplete_tasks(self) -> List[Task]:
         """Return all daily tasks that haven't been completed yet."""
         return [task for task in self.get_daily_tasks() if not task.is_completed]
+
+    def get_tasks_by_priority(self, priority: str) -> List[Task]:
+        """Return all daily tasks with a specific priority level."""
+        return [task for task in self.get_daily_tasks() if task.priority == priority]
+
+    def get_tasks_by_status(self, completed: bool) -> List[Task]:
+        """Return all daily tasks filtered by completion status."""
+        return [task for task in self.get_daily_tasks() if task.is_completed == completed]
+
+    def search_tasks(self, query: str) -> List[Task]:
+        """Search for tasks by name or description (case-insensitive)."""
+        query_lower = query.lower()
+        return [task for task in self.get_daily_tasks() 
+                if query_lower in task.name.lower() or 
+                   query_lower in task.description.lower()]
 
 
 @dataclass
@@ -129,6 +177,30 @@ class Owner:
     def get_total_daily_task_minutes(self) -> int:
         """Sum the duration of all daily tasks across all pets."""
         return sum(pet.get_total_task_duration() for pet in self.pets)
+
+    def get_pet_by_name(self, name: str) -> Optional[Pet]:
+        """Find a pet by name (case-insensitive)."""
+        name_lower = name.lower()
+        for pet in self.pets:
+            if pet.name.lower() == name_lower:
+                return pet
+        return None
+
+    def get_all_high_priority_tasks(self) -> List[Task]:
+        """Get all high-priority daily tasks across all pets."""
+        high_priority = []
+        for pet in self.pets:
+            high_priority.extend(pet.get_tasks_by_priority('high'))
+        return high_priority
+
+    def get_incomplete_tasks_by_pet(self) -> Dict[str, List[Task]]:
+        """Return a dictionary mapping pet names to their incomplete tasks."""
+        result = {}
+        for pet in self.pets:
+            incomplete = pet.get_tasks_by_status(False)
+            if incomplete:
+                result[pet.name] = incomplete
+        return result
 
 
 class ScheduledTask:
@@ -262,3 +334,58 @@ class Scheduler:
         
         available_time = self.owner.get_total_available_minutes()
         return total_time_needed <= available_time
+
+    def sort_tasks_by_priority(self, tasks: List[Task]) -> List[Task]:
+        """Sort tasks by priority (high → medium → low)."""
+        return sorted(tasks, key=lambda t: t.get_priority_score(), reverse=True)
+
+    def sort_tasks_by_duration(self, tasks: List[Task], ascending: bool = False) -> List[Task]:
+        """Sort tasks by duration in ascending order (short first) or descending."""
+        return sorted(tasks, key=lambda t: t.duration_minutes, reverse=not ascending)
+
+    def filter_tasks_by_priority(self, tasks: List[Task], priority: str) -> List[Task]:
+        """Filter tasks to only those with a specific priority level."""
+        return [task for task in tasks if task.priority == priority]
+
+    def filter_tasks_by_status(self, tasks: List[Task], completed: bool = False) -> List[Task]:
+        """Filter tasks by completion status."""
+        return [task for task in tasks if task.is_completed == completed]
+
+    def detect_conflicts(self) -> Dict[str, List[str]]:
+        """
+        Detect if any tasks in the current schedule overlap in time.
+        
+        Returns:
+            A dictionary mapping task pairs to conflict messages.
+            Empty dict if no conflicts found.
+        """
+        conflicts = {}
+        
+        for i, task1 in enumerate(self.schedule):
+            for j, task2 in enumerate(self.schedule):
+                if i < j and task1.overlaps_with(task2):
+                    conflict_key = f"{task1.task.name} vs {task2.task.name}"
+                    task1_end = task1.get_end_time()
+                    task2_end = task2.get_end_time()
+                    
+                    message = (
+                        f"⚠️ CONFLICT DETECTED: '{task1.task.name}' "
+                        f"({task1.scheduled_time.strftime('%H:%M')}-{task1_end.strftime('%H:%M')}) "
+                        f"overlaps with '{task2.task.name}' "
+                        f"({task2.scheduled_time.strftime('%H:%M')}-{task2_end.strftime('%H:%M')})"
+                    )
+                    conflicts[conflict_key] = message
+        
+        return conflicts
+
+    def get_conflicts_summary(self) -> str:
+        """Return a formatted summary of any detected conflicts."""
+        conflicts = self.detect_conflicts()
+        
+        if not conflicts:
+            return "✓ No scheduling conflicts detected."
+        
+        summary = f"Found {len(conflicts)} scheduling conflict(s):\n"
+        for message in conflicts.values():
+            summary += f"  {message}\n"
+        return summary
