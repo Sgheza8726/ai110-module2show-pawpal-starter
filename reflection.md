@@ -4,8 +4,17 @@
 
 **a. Initial design**
 
-- Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
+The PawPal+ system is built around four main components:
+
+1. **Owner** – Represents the pet owner with attributes like name, availability, and preferences. This class holds the user's context and constraints that influence scheduling decisions.
+
+2. **Pet** – Represents a pet in the owner's care. Each pet has attributes like name, species, age, and special needs. A single owner can have multiple pets, so Pet is a dependent object.
+
+3. **Task** – Represents a single care task (walk, feed, medicate, play, etc.). Each task captures its duration, priority level (high/medium/low), frequency, and any special requirements. Tasks are what get scheduled.
+
+4. **Scheduler** – The system's decision-maker. It takes all the pets, their tasks, and owner constraints as input, then produces an optimized daily schedule by considering time available, task priorities, and task dependencies.
+
+The core relationship is: **Owner has Pets → Pets have Tasks → Scheduler arranges Tasks into a Plan**. The scheduler acts as the "brain" that balances competing priorities and time constraints to create a feasible daily plan.
 
 **b. Design changes**
 
