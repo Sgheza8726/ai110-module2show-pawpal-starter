@@ -181,21 +181,90 @@ else:
     # Display tasks
     if pet.tasks:
         st.write("**Current Tasks:**")
-        for idx, task in enumerate(pet.tasks):
-            col1, col2, col3, col4, col5 = st.columns([2, 1, 1, 1, 0.5])
-            with col1:
-                st.text(task.name)
-            with col2:
+        
+        # Task display and filtering options
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            task_filter_mode = st.radio("Filter View", ["All Tasks", "By Priority", "By Status", "Search"], horizontal=True)
+        
+        scheduler = Scheduler(st.session_state.owner)
+        
+        if task_filter_mode == "All Tasks":
+            # Show all tasks in a table format
+            display_tasks = pet.get_daily_tasks()
+        elif task_filter_mode == "By Priority":
+            selected_priority = st.selectbox("Select Priority", ["high", "medium", "low"], key="priority_filter")
+            display_tasks = scheduler.filter_tasks_by_priority(pet.get_daily_tasks(), selected_priority)
+        elif task_filter_mode == "By Status":
+            status_choice = st.radio("Completion Status", ["Incomplete", "Completed"], horizontal=True)
+            completed = (status_choice == "Completed")
+            display_tasks = scheduler.filter_tasks_by_status(pet.get_daily_tasks(), completed=completed)
+        else:  # Search
+            search_query = st.text_input("🔍 Search tasks by name or description", key="task_search")
+            display_tasks = pet.search_tasks(search_query) if search_query else pet.get_daily_tasks()
+        
+        # Display filtered/sorted tasks with better formatting
+        if display_tasks:
+            task_df_data = []
+            for task in display_tasks:
                 priority_badge = {"high": "🔴", "medium": "🟡", "low": "🟢"}
-                st.text(f"{priority_badge.get(task.priority, '○')} {task.priority}")
-            with col3:
-                st.text(f"{task.duration_minutes} min")
-            with col4:
-                st.text(task.frequency)
-            with col5:
-                if st.button("🗑", key=f"delete_task_{idx}"):
-                    pet.tasks.pop(idx)
-                    st.rerun()
+                task_df_data.append({
+                    "Task": task.name,
+                    "Priority": f"{priority_badge.get(task.priority, '○')} {task.priority}",
+                    "Duration": f"{task.duration_minutes} min",
+                    "Frequency": task.frequency,
+                    "Status": "✓ Done" if task.is_completed else "⏳ Pending"
+                })
+            
+            st.dataframe(task_df_data, use_container_width=True, hide_index=True)
+            
+            # Show sorting options
+            with st.expander("📊 Sort Tasks", expanded=False):
+                sort_option = st.selectbox("Sort by:", ["Priority (High First)", "Duration (Short First)", "Duration (Long First)"], key="sort_select")
+                
+                if sort_option == "Priority (High First)":
+                    sorted_tasks = scheduler.sort_tasks_by_priority(display_tasks)
+                elif sort_option == "Duration (Short First)":
+                    sorted_tasks = scheduler.sort_tasks_by_duration(display_tasks, ascending=True)
+                else:  # Long first
+                    sorted_tasks = scheduler.sort_tasks_by_duration(display_tasks, ascending=False)
+                
+                st.write("**Sorted Task Order:**")
+                for i, task in enumerate(sorted_tasks, 1):
+                    st.text(f"{i}. {task.name} ({task.duration_minutes} min, {task.priority} priority)")
+        else:
+            st.info("No tasks matching your filter.")
+        
+        # Task management interface
+        st.divider()
+        st.subheader("➕ Manage Individual Tasks")
+        
+        if display_tasks:
+            task_to_manage = st.selectbox("Select a task to manage:", [t.name for t in pet.get_daily_tasks()], key="task_manage_select")
+            task_to_manage_obj = next((t for t in pet.get_daily_tasks() if t.name == task_to_manage), None)
+            
+            if task_to_manage_obj:
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    if st.button("✓ Mark Complete", key="mark_complete_btn"):
+                        next_task = task_to_manage_obj.mark_complete()
+                        if next_task:
+                            pet.add_task(next_task)
+                            st.success(f"✓ Marked '{task_to_manage}' complete! New recurring instance created.")
+                        else:
+                            st.success(f"✓ Marked '{task_to_manage}' complete!")
+                        st.rerun()
+                with col2:
+                    if st.button("✕ Delete Task", key="delete_manage_btn"):
+                        pet.tasks.remove(task_to_manage_obj)
+                        st.success(f"Deleted '{task_to_manage}'")
+                        st.rerun()
+                with col3:
+                    if task_to_manage_obj.is_completed:
+                        if st.button("↺ Mark Incomplete", key="mark_incomplete_btn"):
+                            task_to_manage_obj.mark_incomplete()
+                            st.info(f"Marked '{task_to_manage}' as incomplete")
+                            st.rerun()
     else:
         st.info(f"No tasks for {pet.name} yet. Add one above!")
     
@@ -228,28 +297,65 @@ else:
         schedule = scheduler.generate_schedule()
         
         if schedule:
-            st.success("Schedule generated successfully!")
+            st.success("✓ Schedule generated successfully!")
+            
+            # Display summary
             st.write(scheduler.get_schedule_summary())
             
+            # Conflict detection
+            st.divider()
+            st.subheader("⚠️ Conflict Detection")
+            conflict_summary = scheduler.get_conflicts_summary()
+            if "No scheduling conflicts" in conflict_summary:
+                st.success(conflict_summary)
+            else:
+                st.warning(conflict_summary)
+            
             # Detailed schedule view
-            st.subheader("Detailed Schedule")
+            st.divider()
+            st.subheader("📅 Detailed Schedule")
             schedule_data = []
             for scheduled_task in schedule:
                 end_time = scheduled_task.get_end_time()
                 schedule_data.append({
                     "Time": f"{scheduled_task.scheduled_time.strftime('%H:%M')}-{end_time.strftime('%H:%M')}",
                     "Task": scheduled_task.task.name,
-                    "Pet": "TBD",  # Could be enhanced to track which pet
                     "Duration": f"{scheduled_task.duration_minutes} min",
-                    "Priority": scheduled_task.task.priority
+                    "Priority": scheduled_task.task.priority.upper(),
+                    "Frequency": scheduled_task.task.frequency
                 })
             
-            st.dataframe(schedule_data, use_container_width=True)
+            st.dataframe(schedule_data, use_container_width=True, hide_index=True)
             
             # Feasibility check
+            st.divider()
+            st.subheader("📊 Schedule Analysis")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                total_scheduled = sum(st.duration_minutes for st in schedule)
+                st.metric("Scheduled Time", f"{total_scheduled} min")
+            with col2:
+                available_minutes = st.session_state.owner.get_total_available_minutes()
+                st.metric("Available Time", f"{available_minutes} min")
+            with col3:
+                utilization = (total_scheduled / available_minutes * 100) if available_minutes > 0 else 0
+                st.metric("Utilization", f"{utilization:.1f}%")
+            
+            # Feasibility and high-priority task analysis
+            st.divider()
             if scheduler.is_schedule_feasible():
-                st.success("✓ All high-priority tasks fit in your schedule!")
+                st.success("✓ Schedule is feasible - all high-priority tasks fit in your available time!")
             else:
-                st.warning("⚠️ Not all high-priority tasks could be scheduled. Consider adjusting availability or removing low-priority tasks.")
+                st.warning("⚠️ Not all high-priority tasks could be scheduled. Consider adjusting owner availability or removing low-priority tasks.")
+            
+            # High priority task summary
+            high_priority_tasks = st.session_state.owner.get_all_high_priority_tasks()
+            scheduled_high_priority = [st.task for st in schedule if st.task.priority == "high"]
+            
+            if high_priority_tasks:
+                st.info(f"**High-Priority Tasks**: {len(scheduled_high_priority)}/{len(high_priority_tasks)} scheduled")
+                if len(scheduled_high_priority) < len(high_priority_tasks):
+                    missed = [t.name for t in high_priority_tasks if t not in scheduled_high_priority]
+                    st.caption(f"Could not schedule: {', '.join(missed)}")
         else:
             st.warning("No tasks to schedule. Add tasks to your pets first.")
